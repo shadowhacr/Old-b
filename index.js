@@ -397,7 +397,7 @@ bot.onText(/\/start/, async (msg) => {
   if (!joined) {
     return bot.sendMessage(
       chatId,
-      "<b>❌ Access Denied</b>
+      "<b>❌ Access Denied</b>"
 
 Please join our channel first to use the bot 👇",
       {
