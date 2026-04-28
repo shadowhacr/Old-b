@@ -397,9 +397,7 @@ bot.onText(/\/start/, async (msg) => {
   if (!joined) {
     return bot.sendMessage(
       chatId,
-      "<b>❌ Access Denied</b>"
-
-Please join our channel first to use the bot 👇",
+      "<b>❌ Access Denied</b>Please join our channel first to use the bot 👇",
       {
         parse_mode: "HTML", // Markdown se HTML kar diya
         reply_markup: {
