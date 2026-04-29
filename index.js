@@ -320,7 +320,7 @@ async function connectToWhatsApp(botNumber, chatId) {
   }
 }
 
-const CHANNEL_USERNAME = "@shadowhacks";
+const CHANNEL_USERNAME = "@ssbugchannel";
 const YT_LINK = "http://www.youtube.com/@Teamshadowhacker";
 const IG_LINK = "https://www.instagram.com/shadowofficial?igsh=MXBuZnU0bGVma3UwMQ==";
 const WA_LINK = "https://whatsapp.com/channel/0029VbBo79xA89MqhJETWp0Z";
